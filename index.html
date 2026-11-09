@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GRIDLOCK</title>
+<style>
+  :root{
+    --bg:#0e1116; --panel:#161b22; --panel2:#1c232d; --line:#2a3340;
+    --text:#e6edf3; --muted:#8b98a5; --accent:#58a6ff;
+    --p0:#e5484d; --p1:#3b82f6; --p2:#f5a524; --p3:#22c55e;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);
+    font:15px/1.45 ui-sans-serif,system-ui,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+  a{color:var(--accent)}
+  h1{font-size:26px;letter-spacing:.14em;margin:0}
+  h1 span{color:var(--accent)}
+  .wrap{max-width:1000px;margin:0 auto;padding:22px 16px 60px}
+  .top{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;margin-bottom:18px}
+  .sub{color:var(--muted);font-size:13px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px}
+  .row{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
+  label{font-size:12px;color:var(--muted);display:block;margin-bottom:4px;text-transform:uppercase;letter-spacing:.06em}
+  input,select{background:var(--panel2);border:1px solid var(--line);color:var(--text);
+    border-radius:8px;padding:9px 11px;font-size:14px;outline:none}
+  input:focus,select:focus{border-color:var(--accent)}
+  button{background:var(--accent);color:#06131f;border:0;border-radius:8px;padding:10px 15px;
+    font-size:14px;font-weight:600;cursor:pointer}
+  button.ghost{background:transparent;color:var(--text);border:1px solid var(--line)}
+  button:disabled{opacity:.45;cursor:not-allowed}
+  .gridwrap{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:18px}
+  @media(max-width:760px){.gridwrap{grid-template-columns:1fr}}
+  .board{display:grid;grid-template-columns:repeat(6,1fr);gap:6px;
+    background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:10px;aspect-ratio:1/1}
+  .cell{position:relative;border-radius:9px;background:var(--panel2);border:1px solid var(--line);
+    display:flex;align-items:center;justify-content:center;font-size:20px;cursor:default;
+    transition:transform .06s,box-shadow .12s;user-select:none;min-height:38px}
+  .cell.node .star{position:absolute;bottom:2px;right:5px;font-size:12px;color:#ffffff88}
+  .cell.owned .star{color:#00000099}
+  .cell.legal{cursor:pointer;outline:2px solid #ffffffaa;outline-offset:-2px}
+  .cell.legal:hover{transform:translateY(-2px);box-shadow:0 6px 16px #0008}
+  .cell.t-expand{animation:pulse 1.6s infinite}
+  @keyframes pulse{0%,100%{box-shadow:inset 0 0 0 0 #ffffff22}50%{box-shadow:inset 0 0 0 4px #ffffff22}}
+  .cell .pip{position:absolute;top:4px;left:5px;display:flex;gap:2px}
+  .cell .pip i{width:6px;height:6px;border-radius:50%;background:#ffffffdd;box-shadow:0 0 0 1px #0006}
+  .barwrap{background:#0b0f14;border-radius:8px;height:9px;overflow:hidden;border:1px solid var(--line)}
+  .bar{height:100%;background:linear-gradient(90deg,#f5a524,#e5484d);width:0;transition:width .2s}
+  .seat{display:flex;align-items:center;gap:9px;padding:8px;border-radius:9px;border:1px solid transparent}
+  .seat.active{border-color:var(--accent);background:#0f2036}
+  .dot{width:12px;height:12px;border-radius:3px;flex:0 0 auto}
+  .seat .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .seat .st{font-size:12px;color:var(--muted);white-space:nowrap}
+  .log{height:220px;overflow:auto;font-size:13px;font-family:ui-monospace,Menlo,Consolas,monospace}
+  .log div{padding:3px 0;border-bottom:1px solid #ffffff08;color:var(--muted)}
+  .log b{color:var(--text)}
+  .turn{font-size:15px;margin-bottom:8px;min-height:24px}
+  .pill{display:inline-block;padding:2px 9px;border-radius:999px;font-size:12px;font-weight:700;
+    background:#0f2036;border:1px solid var(--accent)}
+  .muted{color:var(--muted)}
+  .err{color:#ff7b72;font-size:13px;min-height:18px;margin-top:8px;word-break:break-word}
+  .hint{font-size:12px;color:var(--muted);margin-top:6px}
+  .banner{background:#0f2036;border:1px solid var(--accent);border-radius:10px;padding:10px 12px;margin-top:12px}
+  code{background:#0b0f14;padding:2px 6px;border-radius:6px;font-size:12px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <h1>GRID<span>LOCK</span></h1>
+    <div class="sub">6 x 6 &middot; 2-4 players &middot; first to 14 cells wins</div>
+  </div>
+
+  <!-- ============ LOBBY ============ -->
+  <div id="lobby" class="card">
+    <div class="gridwrap" style="grid-template-columns:1fr 1fr 1fr">
+      <div>
+        <label>Your name</label>
+        <input id="myName" value="Player" maxlength="24" style="width:100%">
+      </div>
+      <div>
+        <label>Create game</label>
+        <div class="row">
+          <select id="players"><option>2</option><option>3</option><option>4</option></select>
+          <button onclick="createGame()">Create</button>
+        </div>
+      </div>
+      <div>
+        <label>Join by code</label>
+        <div class="row">
+          <input id="joinCode" placeholder="CODE" maxlength="4" style="width:96px;text-transform:uppercase">
+          <button class="ghost" onclick="joinGame()">Join</button>
+        </div>
+      </div>
+    </div>
+    <div class="err" id="lobbyErr"></div>
+    <div class="banner" id="resumeBanner" style="display:none">
+      <span id="resumeText"></span>
+      <button class="ghost" onclick="resumeGame()" style="margin-left:10px">Resume</button>
+      <button class="ghost" onclick="forgetGame()">Dismiss</button>
+    </div>
+    <div class="hint">Share the 4-letter code with friends &mdash; they join in the browser, no install, no login.</div>
+  </div>
+
+  <!-- ============ GAME ============ -->
+  <div id="game" style="display:none">
+    <div class="gridwrap">
+      <div>
+        <div class="turn" id="turnLine"></div>
+        <div class="board" id="board"></div>
+        <div class="row" style="margin-top:12px">
+          <button class="ghost" id="btnHarvest" onclick="doAction('harvest',null)">Harvest (+2 energy)</button>
+          <button class="ghost" id="btnBot" onclick="addBot()">Add bot</button>
+          <button class="ghost" id="btnReplay" onclick="startReplay()">Replay</button>
+          <button class="ghost" onclick="copyInvite()">Copy invite</button>
+          <button class="ghost" onclick="leaveGame()">Leave</button>
+        </div>
+        <div class="err" id="gameErr"></div>
+        <div class="hint" id="statusHint"></div>
+      </div>
+      <div>
+        <div class="card" style="padding:12px;margin-bottom:14px">
+          <label>Energy</label>
+          <div class="barwrap"><div class="bar" id="energyBar"></div></div>
+          <div class="muted" style="font-size:13px;margin-top:6px" id="energyText"></div>
+        </div>
+        <div class="card" style="padding:10px;margin-bottom:14px">
+          <label style="margin-bottom:8px">Players</label>
+          <div id="seats"></div>
+        </div>
+        <div class="card" style="padding:12px">
+          <label style="margin-bottom:6px">Move log</label>
+          <div class="log" id="log"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+"use strict";
+var LS = "gridlock.session";
+var S = null;                 // last state from the server
+var GID = null, TOKEN = null;
+var replay = null;            // {log, initial, i, timer, board, nodes}
+var poll = null;
+
+/* ------------- session persistence ------------- */
+function saveSession(){ if(GID&&TOKEN) localStorage.setItem(LS, JSON.stringify({gameId:GID,token:TOKEN,code:S&&S.joinCode})); }
+function forgetGame(){ localStorage.removeItem(LS); location.reload(); }
+function resumeGame(){ loadSession(); }
+function loadSession(){
+  try{ var o=JSON.parse(localStorage.getItem(LS)||"null"); if(!o) return; GID=o.gameId; TOKEN=o.token; }
+  catch(e){ return; }
+  refresh();
+}
+
+/* ------------- API helpers ------------- */
+function api(path, method, body){
+  var opt={method:method||"GET",headers:{}};
+  if(TOKEN) opt.headers["X-Player-Token"]=TOKEN;
+  if(body){ opt.headers["Content-Type"]="application/json"; opt.body=JSON.stringify(body); }
+  var url = path + (path.indexOf("?")>=0?"&":"?") + "gameId="+encodeURIComponent(GID||"")+"&token="+encodeURIComponent(TOKEN||"");
+  return fetch(url, opt).then(function(r){ return r.json(); });
+}
+function post(path, body){
+  var h={"Content-Type":"application/json"}; if(TOKEN) h["X-Player-Token"]=TOKEN;
+  return fetch(path,{method:"POST",headers:h,body:JSON.stringify(body)}).then(function(r){return r.json();});
+}
+
+/* ------------- lobby ------------- */
+function myName(){ return (document.getElementById("myName").value||"Player").slice(0,24); }
+function lobbyErr(m){ document.getElementById("lobbyErr").textContent = m||""; }
+
+function createGame(){
+  lobbyErr("");
+  post("/api/game",{players:parseInt(document.getElementById("players").value,10),hostName:myName()})
+  .then(function(j){ if(!j.ok){ lobbyErr(j.error||"failed"); return; }
+    GID=j.gameId; TOKEN=j.token; saveSession(); showGame(j.state); });
+}
+function joinGame(){
+  lobbyErr("");
+  var code=(document.getElementById("joinCode").value||"").trim().toUpperCase();
+  if(!code){ lobbyErr("enter a code"); return; }
+  post("/api/join",{joinCode:code,name:myName(),kind:"human"})
+  .then(function(j){ if(!j.ok){ lobbyErr(j.error||"failed"); return; }
+    GID=j.state.gameId; TOKEN=j.token; saveSession(); showGame(j.state); });
+}
+
+/* ------------- game view ------------- */
+function showGame(state){
+  document.getElementById("lobby").style.display="none";
+  document.getElementById("game").style.display="block";
+  render(state); startPolling();
+}
+function refresh(){
+  if(!GID) return;
+  api("/api/state").then(function(j){
+    if(!j || j.error){ localStorage.removeItem(LS); return; }
+    showGame(j);
+  });
+}
+function startPolling(){
+  if(poll) clearInterval(poll);
+  poll = setInterval(function(){
+    if(!S || S.status==="finished" || replay) return;
+    if(S.you!==S.turn){
+      api("/api/state").then(function(j){ if(j && !j.error) render(j); });
+    }
+  }, 1400);
+}
+
+function ownerColor(o){ return o===null?"":["var(--p0)","var(--p1)","var(--p2)","var(--p3)"][o%4]; }
+function esc(s){ return String(s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];}); }
+function nameOf(seat){ var s=S.seats.filter(function(x){return x.seat===seat;})[0]; return s&&s.name?s.name:("Seat "+seat); }
+
+function render(state){
+  S = state;
+  document.getElementById("gameErr").textContent = "";
+
+  var tl = document.getElementById("turnLine");
+  if(S.status==="finished"){
+    tl.innerHTML = S.winner==="draw" ? "<b>Draw.</b> Match over." :
+      ("<b>"+esc(nameOf(S.winner))+"</b> wins!");
+  }else if(S.status==="lobby"){
+    tl.innerHTML = '<span class="muted">Waiting for players...</span> code <code>'+esc(S.joinCode)+'</code>';
+  }else if(S.you===S.turn){
+    tl.innerHTML = '<span class="pill">YOUR TURN</span> &nbsp;<span class="muted">round '+S.round+'/'+S.maxRounds+'</span>';
+  }else{
+    tl.innerHTML = '<b>'+esc(S.turnName)+'</b>&rsquo;s turn &nbsp;<span class="muted">round '+S.round+'/'+S.maxRounds+'</span>';
+  }
+
+  var b = document.getElementById("board"); b.innerHTML="";
+  var legal = indexLegal();
+  for(var y=0;y<6;y++) for(var x=0;x<6;x++){
+    var c = S.grid[y][x];
+    var el = document.createElement("div");
+    el.className = "cell" + (c.node?" node":"") + (c.owner!==null?" owned":"");
+    if(c.owner!==null) el.style.background = ownerColor(c.owner);
+    if(c.defense>0){
+      var p=document.createElement("div"); p.className="pip";
+      for(var i=0;i<c.defense;i++) p.appendChild(document.createElement("i"));
+      el.appendChild(p);
+    }
+    if(c.node){ var st=document.createElement("div"); st.className="star"; st.textContent="*"; el.appendChild(st); }
+    var key = x+","+y;
+    if(legal[key]){
+      el.className += " legal t-"+legal[key].type;
+      el.onclick = (function(t){ return function(){ doAction(t[0],t[1]); }; })([legal[key].type,[x,y]]);
+    }
+    el.title = "("+x+","+y+")"+(c.owner!==null?" "+nameOf(c.owner):" empty")+(c.node?" - power node":"");
+    b.appendChild(el);
+  }
+
+  var me = S.seats.filter(function(s){return s.seat===S.you;})[0];
+  var e = me?me.energy:0;
+  document.getElementById("energyText").textContent = me ? (e+" energy available" + (S.you===S.turn?"":" (not your turn)")) : "spectating";
+  document.getElementById("energyBar").style.width = Math.min(100,(e/12)*100)+"%";
+
+  var sd = document.getElementById("seats"); sd.innerHTML="";
+  S.seats.forEach(function(s){
+    var d=document.createElement("div");
+    d.className="seat"+(s.seat===S.turn?" active":"");
+    d.innerHTML = '<span class="dot" style="background:'+ownerColor(s.seat)+'"></span>'+
+      '<span class="nm">'+esc(s.name||"empty")+(s.seat===S.you?" (you)":"")+'</span>'+
+      '<span class="st">'+s.cells+' cells &middot; '+s.energy+'e</span>';
+    sd.appendChild(d);
+  });
+
+  var lg=document.getElementById("log"); lg.innerHTML="";
+  S.log.slice().reverse().forEach(function(m){
+    var d=document.createElement("div");
+    d.innerHTML = "<b>R"+m.round+".</b> "+esc(m.name)+" "+m.action+(m.target?(" to ("+m.target[0]+","+m.target[1]+")"):"");
+    lg.appendChild(d);
+  });
+
+  document.getElementById("btnHarvest").disabled = !S.legalMoves.some(function(m){return m.type==="harvest";});
+  document.getElementById("btnBot").style.display =
+    (S.you===0 && S.seats.some(function(s){return !s.name;})) ? "" : "none";
+  document.getElementById("btnReplay").style.display = (S.log.length?"":"none") + (replay?"":"");
+  if(S.log.length===0) document.getElementById("btnReplay").style.display="none";
+  else document.getElementById("btnReplay").style.display="";
+  document.getElementById("statusHint").textContent = hint();
+  saveSession();
+}
+
+function hint(){
+  if(S.status==="finished") return "Press Replay to re-watch the match from the API log.";
+  if(S.you===S.turn){
+    if(!S.legalMoves.length) return "No legal moves.";
+    var t=[]; S.legalMoves.forEach(function(m){ if(t.indexOf(m.type)<0) t.push(m.type); });
+    return "Click an outlined cell: "+t.join(" / ")+" - or Harvest.";
+  }
+  if(S.status==="lobby") return "Waiting for players to join with code "+S.joinCode+".";
+  return "Waiting for "+S.turnName+"...";
+}
+function indexLegal(){
+  var out={};
+  (S.legalMoves||[]).forEach(function(m){ if(m.target) out[m.target[0]+","+m.target[1]]=m; });
+  return out;
+}
+
+/* ------------- actions ------------- */
+function doAction(type,target){
+  if(!S || S.you!==S.turn || S.status!=="active") return;
+  document.getElementById("gameErr").textContent="";
+  post("/api/move",{gameId:GID,token:TOKEN,action:{type:type,target:target}}).then(function(j){
+    if(!j.ok){ document.getElementById("gameErr").textContent = j.error||"illegal move"; }
+    if(j.state) render(j.state);
+  });
+}
+function addBot(){
+  post("/api/bot",{gameId:GID,token:TOKEN}).then(function(j){
+    if(!j.ok){ document.getElementById("gameErr").textContent=j.error||"failed"; }
+    if(j.state) render(j.state);
+  });
+}
+function copyInvite(){
+  var url = location.origin+location.pathname+"?code="+S.joinCode;
+  try{ navigator.clipboard.writeText(url); }catch(e){}
+  document.getElementById("gameErr").textContent = "Invite link: "+url;
+}
+function leaveGame(){ if(poll)clearInterval(poll); localStorage.removeItem(LS); location.reload(); }
+
+/* ------------- replay ------------- */
+function startReplay(){
+  if(replay){ stopReplay(); return; }
+  api("/api/replay").then(function(j){
+    if(!j.ok) return;
+    replay = {log:j.log, i:0, board:cloneBoard(j.initial), nodes:j.nodes, timer:null};
+    document.getElementById("btnReplay").textContent="Stop";
+    document.getElementById("turnLine").innerHTML = '<span class="pill">REPLAY</span> <span class="muted">press Stop to return</span>';
+    var step=function(){
+      if(replay.i>=replay.log.length){ stopReplay(); return; }
+      var m=replay.log[replay.i++];
+      applyToBoard(replay.board,m);
+      drawReplayBoard(); renderLogReplay(m);
+    };
+    replay.timer=setInterval(step,650); step();
+  });
+}
+function stopReplay(){
+  if(replay&&replay.timer) clearInterval(replay.timer);
+  replay=null;
+  document.getElementById("btnReplay").textContent="Replay";
+  if(S) render(S);
+}
+function cloneBoard(src){ var o={}; for(var k in src) o[k]={owner:src[k].owner,defense:src[k].defense}; return o; }
+function applyToBoard(b,m){
+  var k=m.target[0]+","+m.target[1];
+  if(m.action==="expand"){ b[k]={owner:m.seat,defense:0}; }
+  else if(m.action==="strike"){ if(b[k].defense>0) b[k].defense--; else b[k].owner=m.seat; }
+  else if(m.action==="fortify"){ b[k].defense++; }
+}
+function drawReplayBoard(){
+  var b=document.getElementById("board"); b.innerHTML="";
+  for(var y=0;y<6;y++) for(var x=0;x<6;x++){
+    var c=replay.board[x+","+y];
+    var isNode = replay.nodes.some(function(n){return n[0]===x&&n[1]===y;});
+    var el=document.createElement("div");
+    el.className="cell"+(isNode?" node":"")+(c.owner!==null?" owned":"");
+    if(c.owner!==null) el.style.background=ownerColor(c.owner);
+    if(c.defense>0){ var p=document.createElement("div"); p.className="pip";
+      for(var i=0;i<c.defense;i++) p.appendChild(document.createElement("i")); el.appendChild(p); }
+    if(isNode){ var st=document.createElement("div"); st.className="star"; st.textContent="*"; el.appendChild(st); }
+    b.appendChild(el);
+  }
+}
+function renderLogReplay(m){
+  var lg=document.getElementById("log");
+  var d=document.createElement("div");
+  d.innerHTML="<b>R"+m.round+".</b> "+esc(m.name)+" "+m.action+(m.target?(" to ("+m.target[0]+","+m.target[1]+")"):"");
+  lg.innerHTML=""; lg.appendChild(d);
+}
+
+/* ------------- boot ------------- */
+(function boot(){
+  var code = new URLSearchParams(location.search).get("code");
+  if(code) document.getElementById("joinCode").value = code.toUpperCase();
+  var o = localStorage.getItem(LS);
+  if(o){
+    try{ var s=JSON.parse(o);
+      document.getElementById("resumeBanner").style.display="block";
+      document.getElementById("resumeText").textContent = "You have a game in progress"+(s.code?(" (code "+s.code+")"):"")+".";
+    }catch(e){}
+    loadSession();
+  }
+})();
+</script>
+</body>
+</html>
